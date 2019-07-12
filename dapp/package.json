@@ -1,0 +1,26 @@
+{
+  "name": "dapp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx truffle test",
+    "ganache": "npx ganache-cli --networkId 5777 -m 'bring blur loop borrow know upset until intact disorder engage collect toddler'"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "truffle": "^5.0.26"
+  },
+  "devDependencies": {
+    "ganache-cli": "^6.4.5",
+    "@babel/polyfill": "^7.4.4",
+    "babel-register": "^6.26.0",
+    "babel-loader": "^7.1.1",
+    "bignumber.js": "^9.0.0",
+    "chai": "^4.2.0",
+    "chai-as-promised": "^7.1.1",
+    "chai-bignumber": "^3.0.0",
+    "web3": "1.0.0-beta.37"
+  }
+}
