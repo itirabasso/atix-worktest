@@ -10,8 +10,10 @@ contract GameContract {
 
         uint expiration;
 
-        Hand player1Choice;
-        Hand player2Choice;
+        // Hand player1Choice;
+        // Hand player2Choice;
+        bytes32 player1SecretHand;
+        bytes32 player2SecretHand;
 
         uint fee;
         uint bet;
@@ -34,12 +36,17 @@ contract GameContract {
         setRules();
     }
 
-    modifier validHand(uint hand) {
-        require(hand > 0 && hand <= 3, "invalid hand");
-        _;
+    function validHand(uint hand) public pure returns (bool) {
+        return hand > 0 && hand <= 3;
     }
 
-    function createGame(address payable _player2, uint _fee) public returns (bytes32) {
+    /**
+    * @dev Creates a game
+    * @param _player2 - address of the player2
+    * @param _secretHand - bytes32 of the player1's secret hand
+    * @param _fee - uint of the the game's fee in wei
+    */
+    function createGame(address payable _player2, bytes32 _secretHand, uint _fee) public returns (bytes32) {
         address payable player1 = msg.sender;
         bytes32 gameId = keccak256(abi.encodePacked(player1, _player2));
 
@@ -54,9 +61,8 @@ contract GameContract {
         // TODO : Maybe using delete games[gameId] is better.
         games[gameId].player1 = player1;
         games[gameId].player2 = _player2;
-        games[gameId].player1Choice = Hand.NONE;
-        games[gameId].player2Choice = Hand.NONE;
-        // games[gameId].expiration = now + GAME_DURATION;
+        games[gameId].player1SecretHand = _secretHand;
+        games[gameId].expiration = now + GAME_DURATION;
         games[gameId].fee = _fee;
         games[gameId].bet = 0;
         games[gameId].winner = 0;
@@ -67,16 +73,18 @@ contract GameContract {
     }
 
     /**
-
+    * @dev Receives a player's secret hand.
+    * @param _gameId - bytes32 of the game's id
+    * @param _secretHand - bytes32 of the player's secret hand
     */
-    function sendHand(bytes32 _gameId, uint _hand) public payable validHand(_hand) returns (bool) {
+    function sendHand(bytes32 _gameId, bytes32 _secretHand) public payable returns (bool) {
         Game storage game = games[_gameId];
         require(game.finalized == false, "the game already ended");
-        require(msg.value >= game.fee, "you need to bet some ether");
+        require(msg.value >= game.fee, "you have to pay the game's fee");
         if (game.player1 == msg.sender) {
-            require(game.player1Choice == Hand.NONE, "you can't change your hand");
+            require(game.player1SecretHand == 0, "you can't change your pick");
         } else if (game.player2 == msg.sender) {
-            require(game.player2Choice == Hand.NONE, "you can't change your hand");
+            require(game.player2SecretHand == 0, "you can't change your pick");
         } else {
             revert("you can't play in this game");
         }
@@ -85,21 +93,25 @@ contract GameContract {
         game.bet = game.bet + msg.value;
 
         if (game.player1 == msg.sender) {
-            game.player1Choice = Hand(_hand);
+            game.player1SecretHand = _secretHand;
         } else {
-            game.player2Choice = Hand(_hand);
+            game.player2SecretHand = _secretHand;
         }
         return true;
     }
 
-    function play(bytes32 _gameId) public view returns (uint) {
-        Game memory game = games[_gameId];
-        return rules[uint(game.player1Choice)][uint(game.player2Choice)];
+    /**
+    * @dev Retrieves the winner for a given combination of hands.
+    * @param _hand1 - uint of player1's hand
+    * @param _hand2 - uint of player2's hand
+    */
+    function play(uint hand1, uint hand2) public pure returns (uint) {
+        return rules[hand1][hand2];
     }
 
     /**
-        When both players have played their hands someone needs to call
-          finishGame to check who win.
+    * @dev Finish a game.
+    * @param _gameId - bytes32 of the game's id
     */
     function finishGame(bytes32 _gameId) public payable returns (bool) {
         Game storage game = games[_gameId];
