@@ -32,7 +32,7 @@ contract GameContract {
     event GameCreated(bytes32 gameId, address player1, address player2, uint fee);
     event ForceFinish(bytes32 gameId, address caller);
     event Winner(bytes32 gameId, address winner, uint reward);
-    event NextRound(bytes32 gameId, uint reward);
+    event NextRound(bytes32 gameId, uint round, uint reward);
     event Tie(bytes32 gameId, uint reward);
 
     constructor() public {
@@ -81,7 +81,7 @@ contract GameContract {
     function sendHand(bytes32 _gameId, uint _hand) public payable returns (bool) {
         require(isValidHand(_hand), "invalid hand");
         Game storage game = games[_gameId];
-        require(game.status == 0, "you can't play in this stage");
+        require(game.status == 1, "you can't play in this stage");
         if (game.player1 == msg.sender) {
             revert("you can't change your pick");
         } else if (game.player2 == msg.sender) {
@@ -165,7 +165,8 @@ contract GameContract {
         games[_gameId].expiration = games[_gameId].expiration + GAME_DURATION;
         games[_gameId].status = 1;
         games[_gameId].reward = reward;
-        emit NextRound(_gameId, reward);
+        games[_gameId].round = games[_gameId].round + 1;
+        emit NextRound(_gameId, games[_gameId].round, reward);
     }
 
     /**

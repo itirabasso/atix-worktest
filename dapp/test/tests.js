@@ -1,9 +1,11 @@
 const assert = require("assert");
-
-const BigNumber = web3.BigNumber
+var abi = require('ethereumjs-abi');
+const randomBytes = require('randombytes');
+const { BN } = require('ethereumjs-util');
+// const BigNumber = web3.BigNumber
 require('chai')
   .use(require('chai-as-promised'))
-  .use(require('chai-bignumber')(BigNumber))
+  .use(require('chai-bignumber')(BN))
   .should()
 
 const GameContract = artifacts.require('GameContract')
@@ -15,7 +17,7 @@ function assertEvent(log, expectedEventName, expectedArgs) {
   if (expectedArgs) {
     for (let key in expectedArgs) {
       let value = args[key]
-      if (value instanceof BigNumber) {
+      if (value instanceof BN) {
         value = value.toString()
       }
       value.should.be.equal(expectedArgs[key], `[assertEvent] ${key}`)
@@ -100,17 +102,35 @@ contract('Game', function([
     })
   })
 
-  async function createGame(player1, player2, fee = MINUMUM_FEE) {
+  function getSecretHand(hand) {
+    const seed = randomBytes(32)
+    const seedBN = new BN(seed);
+    const seedHex = '0x' + seedBN.toString('hex');
+    const secretHand = abi.soliditySHA3(['uint256', 'uint256'], [hand, seedHex]);
+    console.log('secretHand:', secretHand);
+    return secretHand;
+  }
+
+  async function createGame(player1, player2, hand, fee = MINUMUM_FEE) {
+    const secretHand = getSecretHand(hand);
     const receipt = await gameManager.createGame(
       player2,
-      ether(fee),
-      { from: player1 }
+      secretHand,
+      { 
+        from: player1,
+        value: ether(fee)
+      }
     )
-    const event = receipt.logs[0]
-    assert.equal(event.event, "GameCreated")
-    assert.equal(event.args.player1, player1);
-    assert.equal(event.args.player2, player2);
-    assert.equal(event.args.fee.toString(), ether(MINUMUM_FEE));
+    // const event = receipt.logs[0]
+    assertEvent(
+      receipt.logs[0],
+      "GameCreated", 
+      {
+        player1: player1,
+        player2: player2
+      }
+    );
+    // assert.equal(event.args.fee.toString(), ether(MINUMUM_FEE));
     return receipt;
   }
 
@@ -123,9 +143,11 @@ contract('Game', function([
     return receipt;
   }
 
-  async function finishGame(gameId, address) {
+  async function finishGame(gameId, hand, seed) {
     const receipt = await gameManager.finishGame(
       gameId,
+      hand,
+      seed,
       { from: address === undefined ? owner : address}
     );
     // const event = receipt.logs[0]
@@ -137,184 +159,223 @@ contract('Game', function([
     return receipt;
   }
 
+  async function continueGame(gameId, hand, fee = MINUMUM_FEE) {
+    const secretHand = getSecretHand(hand);
+    const receipt = await gameManager.continueGame(
+      gameId,
+      secretHand,
+      { 
+        from: player1,
+        value: ether(fee)
+      }
+    )
+    assertEvent(
+      receipt.logs[0],
+      "NextRound", 
+      {
+        gameId: gameId,
+        player1: player1,
+        player2: player2
+      }
+    );
+    return receipt;
+  }
+
+  async function forceFinishGame(gameId, caller = owner) {
+    const receipt = await gameManager.forceFinishGame(
+      gameId,
+      { 
+        from: caller,
+      }
+    )
+    assertEvent(
+      receipt.logs[0],
+      "ForceFinish", 
+      {
+        gameId: gameId,
+        caller: caller
+      }
+    );
+    return receipt;
+  }
   describe('games', function() {
     it('should create a game', async function() {
-      const receipt = await createGame(player1, player2);
+      const receipt = await createGame(player1, player2, ROCK);
       const event = receipt.logs[0]
       assert.equal(event.args.gameId, "0xbe8c53317bc8a2fd12a55d2e2af745a315bcc11c903383efddc53e23b6e0fddc");
     })
 
     it('should create two games', async function() {
-      const receipt1 = await createGame(player1, player2);
-      const receipt2 = await createGame(player1, player3);
+      const receipt1 = await createGame(player1, player2, ROCK);
+      const receipt2 = await createGame(player1, player3, PAPER);
       assert.notEqual(receipt1.logs[0].args.gameId, receipt2.logs[0].args.gameId);
     })
 
     it('should revert if create two identical games', async function() {
-      await createGame(player1, player2);
-      await assertRevert(createGame(player1, player2), "duplicate game")
+      await createGame(player1, player2, ROCK);
+      await assertRevert(createGame(player1, player2, ROCK), "duplicate game")
     })
 
 
-    it('play hands', async function() {
-      let receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('play hands', async function() {
+  //     let receipt = await createGame(player1, player2, ROCK);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, ROCK);
-      await sendHand(gameId, player2, PAPER);
+  //     // await sendHand(gameId, player1, ROCK);
+  //     await sendHand(gameId, player2, PAPER);
       
-      receipt = await finishGame(gameId);
-      let event = receipt.logs[0];
-      assert.equal(event.event, "Winner");
-      assert.equal(event.args.gameId, gameId);
-      assert.equal(event.args.winner, player2);
-      assert.equal(event.args.reward.toString(), ether("0.002"));
-    })
+  //     receipt = await finishGame(gameId);
+  //     let event = receipt.logs[0];
+  //     assert.equal(event.event, "Winner");
+  //     assert.equal(event.args.gameId, gameId);
+  //     assert.equal(event.args.winner, player2);
+  //     assert.equal(event.args.reward.toString(), ether("0.002"));
+  //   })
 
-    it('happy case with turns', async function() {
-      let receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('happy case with turns', async function() {
+  //     let receipt = await createGame(player1, player2);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, PAPER);
-      await sendHand(gameId, player2, PAPER);
+  //     await sendHand(gameId, player1, PAPER);
+  //     await sendHand(gameId, player2, PAPER);
       
-      receipt = await finishGame(gameId);
+  //     receipt = await finishGame(gameId);
 
-      event = receipt.logs[0];
-      assert.equal(event.event, "Tie");
-      assert.equal(event.args.gameId, gameId);
-      assert.equal(event.args.reward.toString(), ether("0.002"));
+  //     event = receipt.logs[0];
+  //     assert.equal(event.event, "Tie");
+  //     assert.equal(event.args.gameId, gameId);
+  //     assert.equal(event.args.reward.toString(), ether("0.002"));
       
-      await sendHand(gameId, player1, ROCK);
-      await sendHand(gameId, player2, PAPER);
+  //     await sendHand(gameId, player1, ROCK);
+  //     await sendHand(gameId, player2, PAPER);
       
-      receipt = await finishGame(gameId);
+  //     receipt = await finishGame(gameId);
 
-      event = receipt.logs[0];
-      assert.equal(event.event, "Winner");
-      assert.equal(event.args.gameId, gameId);
-      assert.equal(event.args.winner, player2);
-      assert.equal(event.args.reward.toString(), ether("0.004"));
+  //     event = receipt.logs[0];
+  //     assert.equal(event.event, "Winner");
+  //     assert.equal(event.args.gameId, gameId);
+  //     assert.equal(event.args.winner, player2);
+  //     assert.equal(event.args.reward.toString(), ether("0.004"));
 
-    })
+  //   })
 
-    it('should throw when finalize an already ended game', async function() {
-      let receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('should throw when finalize an already ended game', async function() {
+  //     let receipt = await createGame(player1, player2);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, PAPER);
-      await sendHand(gameId, player2, ROCK);
+  //     await sendHand(gameId, player1, PAPER);
+  //     await sendHand(gameId, player2, ROCK);
       
-      receipt = await finishGame(gameId);
+  //     receipt = await finishGame(gameId);
 
-      await assertRevert(finishGame(gameId), "the game already ended");
-    })
+  //     await assertRevert(finishGame(gameId), "the game already ended");
+  //   })
 
-    it('should not be able to finalize if the other one player havent play', async function() {
-      const receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('should not be able to finalize if the other one player havent play', async function() {
+  //     const receipt = await createGame(player1, player2);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, PAPER);
+  //     await sendHand(gameId, player1, PAPER);
       
-      await assertRevert(finishGame(gameId), "player 2 haven't play yet");
-    })
+  //     await assertRevert(finishGame(gameId), "player 2 haven't play yet");
+  //   })
 
-    it('should be able to finish a game after failed to finalized', async function() {
-      let receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('should be able to finish a game after failed to finalized', async function() {
+  //     let receipt = await createGame(player1, player2);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player2, PAPER);
+  //     await sendHand(gameId, player2, PAPER);
       
-      await assertRevert(finishGame(gameId), "player 1 haven't play yet");
+  //     await assertRevert(finishGame(gameId), "player 1 haven't play yet");
 
-      await sendHand(gameId, player1, ROCK);
+  //     await sendHand(gameId, player1, ROCK);
 
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Winner");
-    })
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Winner");
+  //   })
 
-    it('should not be able to change your hand', async function() {
-      const receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('should not be able to change your hand', async function() {
+  //     const receipt = await createGame(player1, player2);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, PAPER);
-      await assertRevert(sendHand(gameId, player1, ROCK), "you can't change your hand");
-    })
+  //     await sendHand(gameId, player1, PAPER);
+  //     await assertRevert(sendHand(gameId, player1, ROCK), "you can't change your hand");
+  //   })
 
-    it('should not be able to play an ended game', async function() {
-      let receipt = await createGame(player1, player2);
+  //   it('should not be able to play an ended game', async function() {
+  //     let receipt = await createGame(player1, player2);
 
-      const gameId = receipt.logs[0].args.gameId;
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, PAPER);
-      await sendHand(gameId, player2, ROCK);
+  //     await sendHand(gameId, player1, PAPER);
+  //     await sendHand(gameId, player2, ROCK);
       
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Winner");
-      await assertRevert(sendHand(gameId, player2, SCISSORS), "the game already ended");
-    })
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Winner");
+  //     await assertRevert(sendHand(gameId, player2, SCISSORS), "the game already ended");
+  //   })
     
-    it('should not be able to change your hand', async function() {
-      let receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('should not be able to change your hand', async function() {
+  //     let receipt = await createGame(player1, player2);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, PAPER);
-      await assertRevert(sendHand(gameId, player1, ROCK), "you can't change your hand");
-      await sendHand(gameId, player2, SCISSORS);
-      await assertRevert(sendHand(gameId, player1, ROCK), "you can't change your hand");
-      await assertRevert(sendHand(gameId, player2, PAPER), "you can't change your hand");
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Winner");
-      assert.equal(receipt.logs[0].args.winner, player2);
-    })
+  //     await sendHand(gameId, player1, PAPER);
+  //     await assertRevert(sendHand(gameId, player1, ROCK), "you can't change your hand");
+  //     await sendHand(gameId, player2, SCISSORS);
+  //     await assertRevert(sendHand(gameId, player1, ROCK), "you can't change your hand");
+  //     await assertRevert(sendHand(gameId, player2, PAPER), "you can't change your hand");
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Winner");
+  //     assert.equal(receipt.logs[0].args.winner, player2);
+  //   })
 
-    it('game should result in a tie', async function() {
-      let receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('game should result in a tie', async function() {
+  //     let receipt = await createGame(player1, player2);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, PAPER);
-      await sendHand(gameId, player2, PAPER);
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Tie");
-    })
+  //     await sendHand(gameId, player1, PAPER);
+  //     await sendHand(gameId, player2, PAPER);
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Tie");
+  //   })
 
-    it('should handle multiple games between same players', async function() {
-      let receipt = await createGame(player1, player2);
-      const gameId = receipt.logs[0].args.gameId;
+  //   it('should handle multiple games between same players', async function() {
+  //     let receipt = await createGame(player1, player2);
+  //     const gameId = receipt.logs[0].args.gameId;
 
-      await sendHand(gameId, player1, PAPER);
-      await sendHand(gameId, player2, PAPER);
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Tie");
+  //     await sendHand(gameId, player1, PAPER);
+  //     await sendHand(gameId, player2, PAPER);
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Tie");
 
-      await sendHand(gameId, player1, ROCK);
-      await sendHand(gameId, player2, ROCK);
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Tie");
+  //     await sendHand(gameId, player1, ROCK);
+  //     await sendHand(gameId, player2, ROCK);
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Tie");
 
-      await sendHand(gameId, player1, ROCK);
-      await sendHand(gameId, player2, PAPER);
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Winner");
+  //     await sendHand(gameId, player1, ROCK);
+  //     await sendHand(gameId, player2, PAPER);
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Winner");
 
-      receipt = await createGame(player1, player2);
-      let gameId2 = receipt.logs[0].args.gameId;
-      assert.equal(gameId, gameId2);
+  //     receipt = await createGame(player1, player2);
+  //     let gameId2 = receipt.logs[0].args.gameId;
+  //     assert.equal(gameId, gameId2);
 
-      await sendHand(gameId, player1, ROCK);
-      await sendHand(gameId, player2, PAPER);
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Winner");
+  //     await sendHand(gameId, player1, ROCK);
+  //     await sendHand(gameId, player2, PAPER);
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Winner");
 
-      receipt = await createGame(player1, player2);
-      gameId2 = receipt.logs[0].args.gameId;
-      assert.equal(gameId, gameId2);
+  //     receipt = await createGame(player1, player2);
+  //     gameId2 = receipt.logs[0].args.gameId;
+  //     assert.equal(gameId, gameId2);
 
-      await sendHand(gameId, player1, ROCK);
-      await sendHand(gameId, player2, SCISSORS);
-      receipt = await finishGame(gameId);
-      assert.equal(receipt.logs[0].event, "Winner");
-    })
+  //     await sendHand(gameId, player1, ROCK);
+  //     await sendHand(gameId, player2, SCISSORS);
+  //     receipt = await finishGame(gameId);
+  //     assert.equal(receipt.logs[0].event, "Winner");
+  //   })
   })
 
 })
