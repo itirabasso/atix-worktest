@@ -30,7 +30,7 @@ contract GameContract {
     mapping (bytes32 => Game) games;
 
     event GameCreated(bytes32 gameId, address player1, address player2, uint fee);
-    event GameCreated(bytes32 gameId, uint round, uint bet);
+    event ForceFinish(bytes32 gameId, address caller);
     event Winner(bytes32 gameId, address winner, uint reward);
     event Tie(bytes32 gameId, uint reward);
 
@@ -64,7 +64,7 @@ contract GameContract {
         games[gameId].player1SecretHand = _secretHand;
         games[gameId].expiration = now + GAME_DURATION;
         games[gameId].fee = fee;
-        games[gameId].bet = fee;
+        games[gameId].reward = fee;
         games[gameId].winner = 0;
         games[gameId].status = 1;
         games[gameId].round = 0;
@@ -115,9 +115,7 @@ contract GameContract {
     function finishGame(bytes32 _gameId, uint8 _hand, uint256 _seed) public payable returns (bool) {
         Game storage game = games[_gameId];
 
-        // check for expiration
         require(game.status == 2, "you can't finish this game");
-
         bytes32 verificationSecretHand = keccak256(abi.encodePacked(_hand, _seed));
         require(game.player1SecretHand == verificationSecretHand, "cant verify hand");
 
@@ -167,6 +165,32 @@ contract GameContract {
         emit NextRound(gameId, player1, _player2, reward);
 
         return gameId;
+    }
+
+    /**
+    * @dev Force finish a game.
+    * @param _gameId - bytes32 of the game's id
+    */
+    function forceFinishGame(bytes32 _gameId) public payable returns (bool) {
+        Game storage game = games[_gameId];
+        bool expired = isGameExpired(game.expiration);
+        require(expired, "game is not expired yet");
+        require(game.player1 == msg.sender || game.player2 == msg.sender, "only players can force finish");
+
+        // TODO: no contempla rondas
+        if (game.status == 1) {
+            game.player1.transfer(game.reward);
+        } else if (game.status == 2 || game.status == 3) {
+            game.player1.transfer(game.reward / 2);
+            game.player2.transfer(game.reward / 2);
+        }
+        game.status = 4;
+        emit ForceFinish(_gameId, msg.sender);
+        return true;
+    }
+
+    function _isGameExpired(uint expiration) private returns (bool) {
+        return expiration >= now;
     }
 
     function _payFee(bytes32 _gameId) private returns (uint) {
