@@ -66,7 +66,7 @@ contract GameContract {
         games[gameId].fee = fee;
         games[gameId].bet = fee;
         games[gameId].winner = 0;
-        games[gameId].status = 0;
+        games[gameId].status = 1;
         games[gameId].round = 0;
         emit GameCreated(gameId, player1, _player2, fee);
 
@@ -93,7 +93,7 @@ contract GameContract {
         uint reward = _payFee(_gameId);
 
         game.bet = reward;
-        game.status = 1;
+        game.status = 2;
         game.player2Hand = _hand;
 
         return true;
@@ -117,9 +117,7 @@ contract GameContract {
 
         // check for expiration
         require(game.status == 2, "you can't finish this game");
-        // require(game.finalized == false, "the game already ended");
-        // require(game.player1Choice != Hand.NONE, "player 1 haven't play yet");
-        // require(game.player2Choice != Hand.NONE, "player 2 haven't play yet");
+
         bytes32 verificationSecretHand = keccak256(abi.encodePacked(_hand, _seed));
         require(game.player1SecretHand == verificationSecretHand, "cant verify hand");
 
@@ -128,27 +126,23 @@ contract GameContract {
         uint winner = play(hand1, hand2);
 
         if (winner == 0) {
-            // it's a tie, restart game state.
-            game.player1Hand = Hand.NONE;
-            game.player2Hand = Hand.NONE;
+            // it's a tie
             game.status = 3;
             emit Tie(_gameId, game.bet);
             return false;
         } else {
-            // there's a winner, so we finish the game
-            game.finalized = true;
-
+            // there's a winner
             address payable winnerAddress;
             game.winner = winner;
-            // send the reward to the winner
+            // send the game's reward to the winner
             if (winner == 1) {
                 winnerAddress = game.player1;
             } else {
                 winnerAddress = game.player2;
             }
-            winnerAddress.transfer(game.bet);
+            winnerAddress.transfer(game.reward);
             game.status = 4;
-            emit Winner(_gameId, winnerAddress, game.bet);
+            emit Winner(_gameId, winnerAddress, game.reward);
             return true;
         }
 
@@ -168,7 +162,7 @@ contract GameContract {
         // TODO : Maybe using delete games[gameId] is better.
         games[gameId].player1SecretHand = _secretHand;
         games[gameId].expiration = now + GAME_DURATION;
-        games[gameId].status = 0;
+        games[gameId].status = 1;
         games[gameId].reward = reward;
         emit NextRound(gameId, player1, _player2, reward);
 
