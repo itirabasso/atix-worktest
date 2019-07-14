@@ -12,10 +12,10 @@ contract GameContract {
 
         uint status;
 
-        Hand player1Hand;
+        // Hand player1Hand;
         Hand player2Hand;
         bytes32 player1SecretHand;
-        bytes32 player2SecretHand;
+        // bytes32 player2SecretHand;
 
         uint fee;
         uint reward;
