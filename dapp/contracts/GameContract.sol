@@ -55,7 +55,7 @@ contract GameContract {
         Game storage game = games[gameId];
 
         require(player1 != _player2, "you cannot play with yourself");
-        require(game.status == 4, "duplicate game");
+        require(game.status == 0 || game.status == 4, "duplicate game");
         uint fee = msg.value;
 
         // TODO : Maybe using delete games[gameId] is better.
