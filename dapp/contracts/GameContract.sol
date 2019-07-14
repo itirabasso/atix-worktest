@@ -192,7 +192,7 @@ contract GameContract {
     }
 
     function isGameExpired(uint expiration) private view returns (bool) {
-        return expiration >= now;
+        return expiration < now;
     }
 
     function _payFee(bytes32 _gameId) private returns (uint) {
