@@ -62,6 +62,7 @@ contract GameContract {
         games[gameId].player1 = player1;
         games[gameId].player2 = _player2;
         games[gameId].player1SecretHand = _secretHand;
+        games[gameId].player2Hand = 0;
         games[gameId].expiration = now + GAME_DURATION;
         games[gameId].fee = fee;
         games[gameId].reward = fee;
@@ -83,7 +84,7 @@ contract GameContract {
         Game storage game = games[_gameId];
         require(game.status == 1, "you can't play in this stage");
         if (game.player1 == msg.sender) {
-            revert("you can't change your pick");
+            revert("you can't change your hand");
         } else if (game.player2 == msg.sender) {
             require(game.player2Hand == uint(Hand.NONE), "you can't change your pick");
         } else {
