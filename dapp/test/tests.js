@@ -20,7 +20,7 @@ function assertEvent(log, expectedEventName, expectedArgs) {
       if (value instanceof BN) {
         value = value.toString()
       }
-      value.should.be.equal(expectedArgs[key], `[assertEvent] ${key}`)
+      assert.equal(value, expectedArgs[key], `[assertEvent] ${key}`)
     }
   }
 }
@@ -94,6 +94,8 @@ contract('Game', function([
 
   const ether = (ether) => web3.utils.toWei(ether, 'ether').toString();
 
+  let secrets = {}
+
   beforeEach(async function() {
     gameManager = await GameContract.new({
       from: owner,
@@ -103,16 +105,14 @@ contract('Game', function([
   })
 
   function getSecretHand(hand) {
-    const seed = randomBytes(32)
-    const seedBN = new BN(seed);
+    const seedBN = new BN(randomBytes(32));
     const seedHex = '0x' + seedBN.toString('hex');
     const secretHand = abi.soliditySHA3(['uint256', 'uint256'], [hand, seedHex]);
-    console.log('secretHand:', secretHand);
-    return secretHand;
+    return [secretHand, seedBN];
   }
 
   async function createGame(player1, player2, hand, fee = MINUMUM_FEE) {
-    const secretHand = getSecretHand(hand);
+    const [secretHand, seed] = getSecretHand(hand);
     const receipt = await gameManager.createGame(
       player2,
       secretHand,
@@ -121,16 +121,16 @@ contract('Game', function([
         value: ether(fee)
       }
     )
-    // const event = receipt.logs[0]
+    const event = receipt.logs[0]
     assertEvent(
-      receipt.logs[0],
+      event,
       "GameCreated", 
       {
         player1: player1,
         player2: player2
       }
     );
-    // assert.equal(event.args.fee.toString(), ether(MINUMUM_FEE));
+    secrets[event.args.gameId] = [hand, seed];
     return receipt;
   }
 
@@ -143,12 +143,12 @@ contract('Game', function([
     return receipt;
   }
 
-  async function finishGame(gameId, hand, seed) {
+  async function finishGame(gameId, hand, seed, player1) {
     const receipt = await gameManager.finishGame(
       gameId,
       hand,
       seed,
-      { from: address === undefined ? owner : address}
+      { from: player1}
     );
     // const event = receipt.logs[0]
     // assert.equal(event.event, "GameCreated")
@@ -160,7 +160,7 @@ contract('Game', function([
   }
 
   async function continueGame(gameId, hand, fee = MINUMUM_FEE) {
-    const secretHand = getSecretHand(hand);
+    const [secretHand, seed] = getSecretHand(hand);
     const receipt = await gameManager.continueGame(
       gameId,
       secretHand,
@@ -174,10 +174,9 @@ contract('Game', function([
       "NextRound", 
       {
         gameId: gameId,
-        player1: player1,
-        player2: player2
       }
     );
+    secrets[gameId] = [hand, seed]
     return receipt;
   }
 
@@ -217,47 +216,62 @@ contract('Game', function([
     })
 
 
-  //   it('play hands', async function() {
-  //     let receipt = await createGame(player1, player2, ROCK);
-  //     const gameId = receipt.logs[0].args.gameId;
+    it('play hands', async function() {
+      let receipt = await createGame(player1, player2, ROCK);
+      const gameId = receipt.logs[0].args.gameId;
 
-  //     // await sendHand(gameId, player1, ROCK);
-  //     await sendHand(gameId, player2, PAPER);
+      // await sendHand(gameId, player1, ROCK);
+      await sendHand(gameId, player2, PAPER);
       
-  //     receipt = await finishGame(gameId);
-  //     let event = receipt.logs[0];
-  //     assert.equal(event.event, "Winner");
-  //     assert.equal(event.args.gameId, gameId);
-  //     assert.equal(event.args.winner, player2);
-  //     assert.equal(event.args.reward.toString(), ether("0.002"));
-  //   })
+      const [hand, seed] = secrets[gameId];
+      receipt = await finishGame(gameId, hand, seed, player1);
+      // let event = receipt.logs[0];
+      assertEvent(
+        receipt.logs[0],
+        "Winner", 
+        {
+          gameId: gameId,
+          winner: player2,
+          reward: ether("0.002")
+        }
+      );
+    })
 
-  //   it('happy case with turns', async function() {
-  //     let receipt = await createGame(player1, player2);
-  //     const gameId = receipt.logs[0].args.gameId;
+    it('happy case with turns', async function() {
+      let receipt = await createGame(player1, player2, PAPER);
+      const gameId = receipt.logs[0].args.gameId;
 
-  //     await sendHand(gameId, player1, PAPER);
-  //     await sendHand(gameId, player2, PAPER);
+      await sendHand(gameId, player2, PAPER);
       
-  //     receipt = await finishGame(gameId);
+      let [hand, seed] = secrets[gameId];
+      receipt = await finishGame(gameId, hand, seed, player1);
 
-  //     event = receipt.logs[0];
-  //     assert.equal(event.event, "Tie");
-  //     assert.equal(event.args.gameId, gameId);
-  //     assert.equal(event.args.reward.toString(), ether("0.002"));
+      assertEvent(
+        receipt.logs[0],
+        "Tie", 
+        {
+          gameId: gameId,
+          reward: ether("0.002")
+        }
+      );
+
+      receipt = await continueGame(gameId, ROCK);
       
-  //     await sendHand(gameId, player1, ROCK);
-  //     await sendHand(gameId, player2, PAPER);
-      
-  //     receipt = await finishGame(gameId);
+      await sendHand(gameId, player2, PAPER);
 
-  //     event = receipt.logs[0];
-  //     assert.equal(event.event, "Winner");
-  //     assert.equal(event.args.gameId, gameId);
-  //     assert.equal(event.args.winner, player2);
-  //     assert.equal(event.args.reward.toString(), ether("0.004"));
+      [hand, seed] = secrets[gameId];
+      receipt = await finishGame(gameId, hand, seed, player1);
 
-  //   })
+      assertEvent(
+        receipt.logs[0],
+        "Winner", 
+        {
+          gameId: gameId,
+          winner: player2,
+          reward: ether("0.004")
+        }
+      );
+    })
 
   //   it('should throw when finalize an already ended game', async function() {
   //     let receipt = await createGame(player1, player2);
