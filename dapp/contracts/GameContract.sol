@@ -80,25 +80,22 @@ contract GameContract {
     * @param _hand - uint of the hand
     */
     function sendHand(bytes32 _gameId, uint _hand) public payable returns (bool) {
+        require(isValidHand(_hand), "invalid hand");
         Game storage game = games[_gameId];
         require(game.status == 0, "you can't play in this stage");
-        uint reward = _payFee(_gameId);
         if (game.player1 == msg.sender) {
-            require(game.player1SecretHand == 0, "you can't change your pick");
+            revert("you can't change your pick");
         } else if (game.player2 == msg.sender) {
-            require(game.player2SecretHand == 0, "you can't change your pick");
+            require(game.player2Hand == Hand.NONE, "you can't change your pick");
         } else {
             revert("you can't play in this game");
         }
-
+        uint reward = _payFee(_gameId);
 
         game.bet = reward;
         game.status = 1;
-        if (game.player1 == msg.sender) {
-            game.player1SecretHand = _secretHand;
-        } else {
-            game.player2SecretHand = _secretHand;
-        }
+        game.player2Hand = _hand;
+
         return true;
     }
 
@@ -183,6 +180,10 @@ contract GameContract {
         require(msg.value >= game.fee, "you need to pay game's fee");
         // TODO : secure math
         return game.reward + msg.value;
+    }
+
+    function isValidHand(uint _hand) public pure returns (bool) {
+        return _hand >= 1 && _hand <= 3;
     }
 
     /**
