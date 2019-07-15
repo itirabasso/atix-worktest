@@ -83,7 +83,7 @@ contract GameContract {
     function sendHand(bytes32 _gameId, uint _hand) public payable returns (bool) {
         require(isValidHand(_hand), "invalid hand");
         Game storage game = games[_gameId];
-        require(game.status == 1, "you can't play in this stage");
+        // require(game.status == 1, "you can't play in this stage");
         if (game.player1 == msg.sender) {
             revert("you can't change your hand");
         } else if (game.player2 == msg.sender) {
@@ -160,6 +160,7 @@ contract GameContract {
     function continueGame(bytes32 _gameId, bytes32 _secretHand) public payable {
         Game storage game = games[_gameId];
         require(game.status == 3, "invalid status");
+        require(game.player1 == msg.sender || game.player2 == msg.sender, "only players can continue a games");
 
         uint reward = _payFee(_gameId);
         games[_gameId].player1SecretHand = _secretHand;
