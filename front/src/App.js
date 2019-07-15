@@ -4,16 +4,16 @@ import './App.css';
 import game from "./game";
 import { promisify } from "util";
 import abi from "ethereumjs-abi";
-import { BN } from "ethereumjs-util";
+import { BN, setLengthLeft } from "ethereumjs-util";
 import { randomBytes } from 'crypto';
 
 let web3;
 
-const gameCreatedId = abi.eventID('GameCreated', ["bytes32", "address", "address", "uint256"]).toString('hex')
-const forceFinishId = abi.eventID('ForceFinish', ["bytes32", "address"]).toString('hex')
-const tieId = abi.eventID('Tie', ["bytes32", "uint256"]).toString('hex')
-const nextRoundId = abi.eventID('NextRound', ["bytes32", "uint256", "uint256"]).toString('hex')
-const winnerId = abi.eventID('Winner', ["bytes32", "address", "uint256"]).toString('hex')
+const gameCreatedId = '0x' + abi.eventID('GameCreated', ["bytes32", "address", "address", "uint256"]).toString('hex')
+const forceFinishId = '0x' + abi.eventID('ForceFinish', ["bytes32", "address"]).toString('hex')
+const tieId = '0x' + abi.eventID('Tie', ["bytes32", "uint256"]).toString('hex')
+const nextRoundId = '0x' + abi.eventID('NextRound', ["bytes32", "uint256", "uint256"]).toString('hex')
+const winnerId = '0x' + abi.eventID('Winner', ["bytes32", "address", "uint256"]).toString('hex')
 
 class App extends Component {
   state = {
@@ -33,6 +33,11 @@ class App extends Component {
     console.log("player1:", accounts[0])
     this.setState({ player1: accounts[0] });
 
+    // console.log('real game id:", 0x3078633430656236623438333930353563373764363836393739383563666137');
+    // const player1 = accounts[0].substring(2);
+    // const player2 = '34eae09c24836a8a2f7a74ac9622337b9ff10647'
+    // console.log('gameIdddd:', this.getGameId(player1, player2));
+
     var options = {
       fromBlock: "pending",
       toBlock: "latest",
@@ -42,40 +47,57 @@ class App extends Component {
     const watchForEvents = function(error, response) {
       if (!error && response) {
         const topics = response.topics;
-        for (const t in topics) {
-          // I couldn't make the abi decoder work so this snippet is a bit ugly...
-          let data, caller, reward, rounds, winner, gameId;
-          console.log(topics[t], response.data);
-          switch (topics[t]) {
+        // console.log(response)
+        topics.forEach((topic) => {
+          let data, caller, reward, rounds, winner, gameId, player1, player2;
+          console.log("data:",response.data);
+          switch (topic) {
             case gameCreatedId:
-              data = abi.rawDecode(["bytes32", "address", "address", "uint256"], response.data);
-              gameId = data[0];
+              // data = abi.rawDecode(["bytes32", "address", "address", "uint256"], response.data);
+              gameId = response.data.substring(0+2, 64)
+              player1 = '0x'+response.data.substring(66+24, 66+24+40)
+              player2 = '0x'+response.data.substring(66+24+40+24, 66+24+40+24+40)
+              reward = '0x'+response.data.substring(66+24+40+24+40)
+              console.log(gameId, player1, player2, reward);
+              console.log(this.getGameId(player1, player2));
+              const seed = localStorage.getItem('seed');
+              localStorage.setItem(gameId, seed);
+              // console.log("game, seed:", gameId, seed)
               this.updateGameId(gameId);
               break;
             case forceFinishId:
-              data = abi.rawDecode(["bytes32", "address"], response.data);
-              [gameId, caller] = data[1];
+              // data = abi.rawDecode(["bytes32", "address"], response.data);
+              gameId = response.data.substring(0+2, 64)
+              caller = '0x' + response.data.substring(66+24, 66+24+40)
               console.log("the game", gameId, " was force-finished by", caller)
               break;
             case tieId:
-              data = abi.rawDecode(["bytes32", "uint256"], response.data);
-              [gameId, reward] = data[1]
+              // data = abi.rawDecode(["bytes32", "uint256"], response.data);
+              gameId = response.data.substring(0+2, 64)
+              reward = '0x' + response.data.substring(66+24)
               console.log("the game", gameId, "is tied");
               break;
             case nextRoundId:
-              data = abi.rawDecode(["bytes32", "uint256", "uint256"], response.data);
-              [gameId, rounds, reward] = data;
-              console.log("game", gameId, 'has another round')
+              // data = abi.rawDecode(["bytes32", "uint256", "uint256"], response.data);
+              gameId = response.data.substring(0+2, 64)
+              rounds = '0x' + response.data.substring(66, 66+64)
+              reward = '0x' + response.data.substring(66+64)
+              // [gameId, rounds, reward] = data;
+              console.log("game", gameId, 'goes for round', rounds, 'the winner will receive', reward);
               break;
             case winnerId:
-              data = abi.rawDecode(["bytes32", "address", "uint256"], response.data);
-              winner = data[1]
+              // data = abi.rawDecode(["bytes32", "address", "uint256"], response.data);
+              gameId = response.data.substring(0+2, 64)
+              winner = '0x' + response.data.substring(66+24, 66+24+40)
+              reward = '0x' + response.data.substring(66+24+40)
               console.log("the winner is", winner)
               break;
             default:
               console.log('unknown event');
           }
-        }
+        });
+        // for (const t in topics) {
+        // }
       } else {
         console.error(error);
       }
@@ -86,14 +108,25 @@ class App extends Component {
   }
 
   getGameId = (player1, player2) => {
-    return abi.soliditySHA256(['address', 'address'], [player1, player2]);
+    // console.log(player1, player2);
+    // console.log(player1.toString('hex'), player2.toString('hex'));
+    player1 = setLengthLeft(player1, 20)
+    player2 = setLengthLeft(player2, 20)
+    // console.log(player1, player2);
+    // console.log(player1.toString('hex'), player2.toString('hex'));
+    // const gameHex = abi.soliditySHA3(['address', 'address'], [player1.toString('hex'), player2.toString('hex')]);
+    const gameHex = abi.soliditySHA3(['address', 'address'], [player1, player2]);
+    console.log('hex', gameHex);
+    const gameId = '0x' + new BN(gameHex).toString('hex');
+    // console.log(gameId);
+    return gameId;
   }
 
   getSecretHand = (hand) => {
     const seedBN = new BN(randomBytes(32));
     const seedHex = '0x' + seedBN.toString('hex');
     console.log(hand, seedHex)
-    const secretHand = abi.soliditySHA256(['uint256', 'uint256'], [hand, seedHex]);
+    const secretHand = abi.soliditySHA3(['uint256', 'uint256'], [hand, seedHex]);
     return [secretHand, seedBN];
   }
 
@@ -101,32 +134,33 @@ class App extends Component {
     console.log("Creating new game between", this.state.player1, "and", this.state.player2)
     const pCreateGame = promisify(game.createGame.sendTransaction);
     try {
-      const player2 = this.state.player2;
-      const gameId = this.getGameId(this.state.player1, this.state.player2);
-      console.log(gameId);
       const [secretHand, seed] = this.getSecretHand(this.state.selectedHand)
-      console.log(player2, secretHand);
+      const secretHandHex = '0x' + secretHand.toString('hex')
+      // console.log('player, secret:', this.state.player2, secretHandHex);
       await pCreateGame(
-        player2,
-        secretHand.toString('hex'),
+        this.state.player2,
+        secretHandHex,
         {
           gas: "300000",
           from: this.state.player1,
           value: web3.toWei(this.state.fee, 'ether')
         }
       );
-      localStorage.setItem(gameId, seed.toString('hex'));
-
-
+      // const gameId = this.getGameId(this.state.player1, this.state.player2);
+      // console.log('gameId:' + gameId.toString('hex'));
+      // console.log('seed: 0x' + seed.toString('hex'))
+      // localStorage.setItem(gameId, seed.toString('hex'));
+      localStorage.setItem('seed', seed.toString('hex'))
     } catch (e) {
       console.log('an error has occored', e);
     }
   }
 
-  sendHand = async (hand) => {
+  sendHand = async () => {
+    const hand = this.state.selectedHand
     try {
       const pSendHand = promisify(game.sendHand.sendTransaction);
-
+      console.log(this.state.gameId, hand)
       await pSendHand(
         this.state.gameId,
         hand,
@@ -199,18 +233,20 @@ class App extends Component {
   deleteGame = async () => {
     try {
       const pDeleteGame = promisify(game.deleteGame.sendTransaction);
-      pDeleteGame(
-        this.state.gameId,
-        {
-          gas: 300000,
-          from: this.state.player1,
-        }
-      );
+      pDeleteGame(this.state.gameId, {gas: 300000, from: this.state.player1});
     } catch (e) {
       console.log('an error has occored', e);
     }
   }
 
+  deleteAll = async () => {
+    try {
+      const pDeleteAll = promisify(game.deleteAll.sendTransaction);
+      pDeleteAll({gas: 300000, from: this.state.player1});
+    } catch (e) {
+      console.log('an error has occored', e);
+    }
+  }
 
   getGame = async () => {
     if (!this.state.gameId) {
@@ -219,13 +255,14 @@ class App extends Component {
     try {
       const pGetGame = promisify(game.getGame.call);
 
-      return await pGetGame(
+      const r = await pGetGame(
         this.state.gameId,
         {
           gas: 300000,
           from: this.state.player1,
         }
       );
+      console.log(r);
     } catch (e) {
       console.log('an error has occored', e);
     }
@@ -281,6 +318,7 @@ class App extends Component {
         <div>
           gameId:<input id="gameId" type="text" onChange={ event => this.updateGameId(event) } />
           <button onClick={() => this.joinGame()}>Join Game</button>
+          <button onClick={() => this.sendHand()}>Send Hand</button>
         </div>
         <section>
           <h3>Elegí</h3>
@@ -290,6 +328,8 @@ class App extends Component {
         </section>
         <button onClick={() => this.finishGame()}>Finish game</button>
         <button onClick={() => this.deleteGame()}>Delete game</button>
+        <button onClick={() => this.getGame()}>Get game</button>
+        <button onClick={() => this.deleteAll()}>DELETE ALL</button>
       </div>
     )
   };
