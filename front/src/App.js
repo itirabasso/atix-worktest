@@ -3,8 +3,17 @@ import './App.css';
 
 import game from "./game";
 import { promisify } from "util";
+import abi from "ethereumjs-abi";
+import { BN } from "ethereumjs-util";
+import { randomBytes } from 'crypto';
 
 let web3;
+
+const gameCreatedId = abi.eventID('GameCreated', ["bytes32", "address", "address", "uint256"]).toString('hex')
+const forceFinishId = abi.eventID('ForceFinish', ["bytes32", "address"]).toString('hex')
+const tieId = abi.eventID('Tie', ["bytes32", "uint256"]).toString('hex')
+const nextRoundId = abi.eventID('NextRound', ["bytes32", "uint256", "uint256"]).toString('hex')
+const winnerId = abi.eventID('Winner', ["bytes32", "address", "uint256"]).toString('hex')
 
 class App extends Component {
   state = {
@@ -35,14 +44,36 @@ class App extends Component {
         const topics = response.topics;
         for (const t in topics) {
           // I couldn't make the abi decoder work so this snippet is a bit ugly...
-          if (topics[t] === '0xb653067b29ff213be334638862d1e3f28be365b33e8eb9558742962f699a6ffd') {
-            const gameId = response.data.substring(0, 66);
-            this.updateGameId(gameId);
-          } else if (topics[t] === '0x3aea73aed08869918e8572b0bc3d5dbd2a09b2b6c47f038ad013f4e18cc94a45') {
-            const winner = response.data.substring(66, 66+66);
-            console.log("the winner is", winner)
-          } else if (topics[t] === '0xc4c914bccdfa67099284940c39dd86cb12b00a694593ce49ec91492b138b62c3') {
-            console.log("it's a tie, keep playing")
+          let data, caller, reward, rounds, winner, gameId;
+          console.log(topics[t], response.data);
+          switch (topics[t]) {
+            case gameCreatedId:
+              data = abi.rawDecode(["bytes32", "address", "address", "uint256"], response.data);
+              gameId = data[0];
+              this.updateGameId(gameId);
+              break;
+            case forceFinishId:
+              data = abi.rawDecode(["bytes32", "address"], response.data);
+              [gameId, caller] = data[1];
+              console.log("the game", gameId, " was force-finished by", caller)
+              break;
+            case tieId:
+              data = abi.rawDecode(["bytes32", "uint256"], response.data);
+              [gameId, reward] = data[1]
+              console.log("the game", gameId, "is tied");
+              break;
+            case nextRoundId:
+              data = abi.rawDecode(["bytes32", "uint256", "uint256"], response.data);
+              [gameId, rounds, reward] = data;
+              console.log("game", gameId, 'has another round')
+              break;
+            case winnerId:
+              data = abi.rawDecode(["bytes32", "address", "uint256"], response.data);
+              winner = data[1]
+              console.log("the winner is", winner)
+              break;
+            default:
+              console.log('unknown event');
           }
         }
       } else {
@@ -54,20 +85,39 @@ class App extends Component {
     filter.watch(function(error, result){});
   }
 
+  getGameId = (player1, player2) => {
+    return abi.soliditySHA256(['address', 'address'], [player1, player2]);
+  }
+
+  getSecretHand = (hand) => {
+    const seedBN = new BN(randomBytes(32));
+    const seedHex = '0x' + seedBN.toString('hex');
+    console.log(hand, seedHex)
+    const secretHand = abi.soliditySHA256(['uint256', 'uint256'], [hand, seedHex]);
+    return [secretHand, seedBN];
+  }
+
   createGame = async () => {
     console.log("Creating new game between", this.state.player1, "and", this.state.player2)
     const pCreateGame = promisify(game.createGame.sendTransaction);
     try {
       const player2 = this.state.player2;
-      const fee = web3.toWei(this.state.fee, 'ether')
+      const gameId = this.getGameId(this.state.player1, this.state.player2);
+      console.log(gameId);
+      const [secretHand, seed] = this.getSecretHand(this.state.selectedHand)
+      console.log(player2, secretHand);
       await pCreateGame(
         player2,
-        fee,
+        secretHand.toString('hex'),
         {
           gas: "300000",
-          from: this.state.player1
+          from: this.state.player1,
+          value: web3.toWei(this.state.fee, 'ether')
         }
       );
+      localStorage.setItem(gameId, seed.toString('hex'));
+
+
     } catch (e) {
       console.log('an error has occored', e);
     }
@@ -75,7 +125,7 @@ class App extends Component {
 
   sendHand = async (hand) => {
     try {
-      const  pSendHand = promisify(game.sendHand.sendTransaction);
+      const pSendHand = promisify(game.sendHand.sendTransaction);
 
       await pSendHand(
         this.state.gameId,
@@ -95,8 +145,12 @@ class App extends Component {
     try {
       const pFinishGame = promisify(game.finishGame.sendTransaction);
 
+      const hand = this.state.selectedHand;
+      const seed = localStorage.getItem(this.state.gameId);
       await pFinishGame(
         this.state.gameId,
+        hand,
+        seed,
         {
           gas: 300000,
           from: this.state.player1,
@@ -107,6 +161,41 @@ class App extends Component {
     }
   }
   
+  continueGame = async () => {
+    try {
+      const pContinueGame = promisify(game.continueGame.sendTransaction);
+
+      const hand = this.state.selectedHand;
+      const [secretHand, seed] = this.getSecretHand(hand);
+      await pContinueGame(
+        this.state.gameId,
+        secretHand,
+        {
+          gas: 300000,
+          from: this.state.player1,
+        }
+      );
+      localStorage.setItem(this.state.gameId, seed.toString('hex'));
+    } catch (e) {
+      console.log('an error has occored', e);
+    }
+  }
+
+  forceFinishGame = async () => {
+    try {
+      const pForceFinish = promisify(game.forceFinish.sendTransaction);
+      await pForceFinish(
+        this.state.gameId,
+        {
+          gas: 300000,
+          from: this.state.player1,
+        }
+      );
+    } catch (e) {
+      console.log('an error has occored', e);
+    }
+  }
+
   deleteGame = async () => {
     try {
       const pDeleteGame = promisify(game.deleteGame.sendTransaction);
@@ -176,6 +265,12 @@ class App extends Component {
     this.setState({player2: player2})
   }
 
+
+  selectHand = async (hand) => {
+    console.log('new hand:', hand)
+    this.setState({selectedHand: hand})
+  }
+
   render() {
     return (
       <div id="sections">
@@ -189,9 +284,9 @@ class App extends Component {
         </div>
         <section>
           <h3>Elegí</h3>
-          <button onClick={() => this.sendHand(1)} id="rock">Piedra</button>
-          <button onClick={() => this.sendHand(2)} id="paper">Papel</button>
-          <button onClick={() => this.sendHand(3)} id="scissors">Tijera</button>
+          <button onClick={() => this.selectHand(1)} id="rock">Piedra</button>
+          <button onClick={() => this.selectHand(2)} id="paper">Papel</button>
+          <button onClick={() => this.selectHand(3)} id="scissors">Tijera</button>
         </section>
         <button onClick={() => this.finishGame()}>Finish game</button>
         <button onClick={() => this.deleteGame()}>Delete game</button>
