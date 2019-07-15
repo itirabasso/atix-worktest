@@ -28,6 +28,9 @@
     ]
   },
   "devDependencies": {
-    "babel-loader": "^8.0.5"
+    "babel-loader": "^8.0.5",
+    "ethereumjs-abi": "^0.6.7",
+    "ethereumjs-util": "^6.1.0",
+    "randombytes": "^2.1.0"
   }
 }
