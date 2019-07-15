@@ -40,7 +40,7 @@ class App extends Component {
           const {gameId, player1, player2, fee} = logs[0].args
           const seed = localStorage.getItem('seed');
           localStorage.setItem(gameId, seed);
-          console.log("game, seed:", gameId, seed)
+          // console.log("game, seed:", gameId, seed)
           this.updateGameId(gameId);
         });
         game.ForceFinish().get((err, logs) => {
@@ -62,7 +62,11 @@ class App extends Component {
           console.log(
             'game', gameId,
             'goes for round', round.toNumber(),
-            ', the winner will receive', web3.fromWei(reward, 'ether').toNumber());
+            ', the winner will receive', web3.fromWei(reward, 'ether').toNumber()
+          );
+          const seed = localStorage.getItem('seed');
+          console.log(gameId, seed);
+          localStorage.setItem(gameId, seed);
         });
         game.Winner().get((err, logs) => {
           if (!logs.length) return;
@@ -85,7 +89,7 @@ class App extends Component {
     player1 = setLengthLeft(player1, 20)
     player2 = setLengthLeft(player2, 20)
     const gameHex = abi.soliditySHA3(['address', 'address'], [player1, player2]);
-    console.log('hex', gameHex);
+    // console.log('hex', gameHex);
     const gameId = '0x' + new BN(gameHex).toString('hex');
     return gameId;
   }
@@ -93,8 +97,9 @@ class App extends Component {
   getSecretHand = (hand) => {
     const seedBN = new BN(randomBytes(32));
     const seedHex = '0x' + seedBN.toString('hex');
-    console.log('0x' + hand.toString(), seedHex)
+    // console.log('0x' + hand.toString(), seedHex)
     const secretHand = abi.soliditySHA3(['uint256', 'uint256'], [hand, seedHex]);
+    // console.log(hand, seedHex, secretHand);
     return [secretHand, seedBN];
   }
 
@@ -123,7 +128,7 @@ class App extends Component {
     const hand = this.state.selectedHand
     try {
       const pSendHand = promisify(game.sendHand.sendTransaction);
-      console.log(this.state.gameId, hand)
+      // console.log(this.state.gameId, hand)
       await pSendHand(
         this.state.gameId,
         hand,
@@ -142,9 +147,9 @@ class App extends Component {
     try {
       const pFinishGame = promisify(game.finishGame.sendTransaction);
 
-      const hand = this.state.selectedHand;
+      const hand = '0x' + this.state.selectedHand.toString();
       const seed = '0x' + localStorage.getItem(this.state.gameId);
-      // console.log(this.state.gameId, hand, seed);
+      console.log(this.state.gameId, hand, seed);
       await pFinishGame(
         this.state.gameId,
         hand,
@@ -166,7 +171,7 @@ class App extends Component {
       const hand = this.state.selectedHand;
       const [secretHand, seed] = this.getSecretHand(hand);
       const secretHandHex = '0x' + secretHand.toString('hex');
-      console.log(this.state.gameId, hand, secretHandHex)
+      // console.log(this.state.gameId, hand, secretHandHex)
       await pContinueGame(
         this.state.gameId,
         secretHandHex,
