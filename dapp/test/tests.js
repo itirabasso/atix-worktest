@@ -49,11 +49,15 @@ async function assertRevert(promise, message) {
   should.fail('Expected revert not received')
 }
 
+/**
+ * Increase the time increase the block's timestamp.
+ * @param {number} duration the duration in seconds
+ */
 function increaseTime(duration) {
   const id = Date.now()
 
   return new Promise((resolve, reject) => {
-    web3.currentProvider.sendAsync(
+    web3.currentProvider.send(
       {
         jsonrpc: '2.0',
         method: 'evm_increaseTime',
@@ -63,7 +67,7 @@ function increaseTime(duration) {
       err1 => {
         if (err1) return reject(err1)
 
-        web3.currentProvider.sendAsync(
+        web3.currentProvider.send(
           {
             jsonrpc: '2.0',
             method: 'evm_mine',
@@ -387,7 +391,7 @@ contract('Game', function([
       assert.equal(receipt.logs[0].event, "Winner");
     })
 
-    it('should handle multiple games between same players', async function() {
+    it('should handle multiple consecutive games between same players', async function() {
       let receipt = await createGame(player1, player2, PAPER);
       const gameId = receipt.logs[0].args.gameId;
 
@@ -406,7 +410,7 @@ contract('Game', function([
       await sendHand(gameId, player2, PAPER);
       [hand, seed] = secrets[gameId];
       receipt = await finishGame(gameId, hand, seed, player1);
-      assert.equal(receipt.logs[0].event, "Winners");
+      assert.equal(receipt.logs[0].event, "Winner");
 
       receipt = await createGame(player1, player2, ROCK);
       let gameId2 = receipt.logs[0].args.gameId;
@@ -425,6 +429,49 @@ contract('Game', function([
       [hand, seed] = secrets[gameId];
       receipt = await finishGame(gameId, hand, seed, player1);
       assert.equal(receipt.logs[0].event, "Winner");
+    })
+
+    it('should force finish a game', async function() {
+      let receipt = await createGame(player1, player2, ROCK);
+      const gameId = receipt.logs[0].args.gameId;
+      await increaseTime(60*60);
+      receipt = await forceFinishGame(gameId, player1);
+      assert.equal(receipt.logs[0].event, "ForceFinish");
+    })
+
+    it('should force finish a game', async function() {
+      let receipt = await createGame(player1, player2, ROCK);
+      const gameId = receipt.logs[0].args.gameId;
+
+      const [hand, seed] = secrets[gameId];
+      await assertRevert(finishGame(gameId, hand,seed, player1), "you can't finish this game");
+      await increaseTime(60*60);
+      receipt = await forceFinishGame(gameId, player1);
+      assert.equal(receipt.logs[0].event, "ForceFinish");
+    })
+
+    it('should throw when the game is not expired', async function() {
+      let receipt = await createGame(player1, player2, ROCK);
+      const gameId = receipt.logs[0].args.gameId;
+      await assertRevert(forceFinishGame(gameId, hacker), "game is not expired yet");
+    })
+
+    it('should throw when third parties try to force finish a game', async function() {
+      let receipt = await createGame(player1, player2, ROCK);
+      const gameId = receipt.logs[0].args.gameId;
+      await increaseTime(60*60);
+      await assertRevert(forceFinishGame(gameId, hacker), "only players can force finish");
+    })
+
+    it.skip('should distribute games reward', async function() {
+      let receipt = await createGame(player1, player2, ROCK);
+      const gameId = receipt.logs[0].args.gameId;
+      await increaseTime(60*60);
+      const previousBalance = await web3.eth.getBalance(player1);
+      await forceFinishGame(gameId, player1);
+      const currentBalance = await web3.eth.getBalance(player1);
+      console.log(currentBalance <= previousBalance);
+      // assert.isBelow(currentBalance, previousBalance);
     })
   })
 
