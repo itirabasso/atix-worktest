@@ -9,12 +9,6 @@ import { randomBytes } from 'crypto';
 
 let web3;
 
-const gameCreatedId = '0x' + abi.eventID('GameCreated', ["bytes32", "address", "address", "uint256"]).toString('hex')
-const forceFinishId = '0x' + abi.eventID('ForceFinish', ["bytes32", "address"]).toString('hex')
-const tieId = '0x' + abi.eventID('Tie', ["bytes32", "uint256"]).toString('hex')
-const nextRoundId = '0x' + abi.eventID('NextRound', ["bytes32", "uint256", "uint256"]).toString('hex')
-const winnerId = '0x' + abi.eventID('Winner', ["bytes32", "address", "uint256"]).toString('hex')
-
 class App extends Component {
   state = {
     gameId: undefined,
@@ -33,71 +27,51 @@ class App extends Component {
     console.log("player1:", accounts[0])
     this.setState({ player1: accounts[0] });
 
-    // console.log('real game id:", 0x3078633430656236623438333930353563373764363836393739383563666137');
-    // const player1 = accounts[0].substring(2);
-    // const player2 = '34eae09c24836a8a2f7a74ac9622337b9ff10647'
-    // console.log('gameIdddd:', this.getGameId(player1, player2));
-
     var options = {
       fromBlock: "pending",
       toBlock: "latest",
       address: game.address,
     };
-
+    // 0xc40eb6b4839055c77d68697985cfa7e7064f73c5661a0552183a1396260379e5
     const watchForEvents = function(error, response) {
       if (!error && response) {
-        const topics = response.topics;
-        // console.log(response)
-        topics.forEach((topic) => {
-          let data, caller, reward, rounds, winner, gameId, player1, player2;
-          console.log("data:",response.data);
-          switch (topic) {
-            case gameCreatedId:
-              // data = abi.rawDecode(["bytes32", "address", "address", "uint256"], response.data);
-              gameId = response.data.substring(0+2, 64)
-              player1 = '0x'+response.data.substring(66+24, 66+24+40)
-              player2 = '0x'+response.data.substring(66+24+40+24, 66+24+40+24+40)
-              reward = '0x'+response.data.substring(66+24+40+24+40)
-              console.log(gameId, player1, player2, reward);
-              console.log(this.getGameId(player1, player2));
-              const seed = localStorage.getItem('seed');
-              localStorage.setItem(gameId, seed);
-              // console.log("game, seed:", gameId, seed)
-              this.updateGameId(gameId);
-              break;
-            case forceFinishId:
-              // data = abi.rawDecode(["bytes32", "address"], response.data);
-              gameId = response.data.substring(0+2, 64)
-              caller = '0x' + response.data.substring(66+24, 66+24+40)
-              console.log("the game", gameId, " was force-finished by", caller)
-              break;
-            case tieId:
-              // data = abi.rawDecode(["bytes32", "uint256"], response.data);
-              gameId = response.data.substring(0+2, 64)
-              reward = '0x' + response.data.substring(66+24)
-              console.log("the game", gameId, "is tied");
-              break;
-            case nextRoundId:
-              // data = abi.rawDecode(["bytes32", "uint256", "uint256"], response.data);
-              gameId = response.data.substring(0+2, 64)
-              rounds = '0x' + response.data.substring(66, 66+64)
-              reward = '0x' + response.data.substring(66+64)
-              // [gameId, rounds, reward] = data;
-              console.log("game", gameId, 'goes for round', rounds, 'the winner will receive', reward);
-              break;
-            case winnerId:
-              // data = abi.rawDecode(["bytes32", "address", "uint256"], response.data);
-              gameId = response.data.substring(0+2, 64)
-              winner = '0x' + response.data.substring(66+24, 66+24+40)
-              reward = '0x' + response.data.substring(66+24+40)
-              console.log("the winner is", winner)
-              break;
-            default:
-              console.log('unknown event');
-          }
+        game.GameCreated().get((err, logs) => {
+          if (!logs.length) return;
+          const {gameId, player1, player2, fee} = logs[0].args
+          const seed = localStorage.getItem('seed');
+          localStorage.setItem(gameId, seed);
+          console.log("game, seed:", gameId, seed)
+          this.updateGameId(gameId);
         });
-        // for (const t in topics) {
-        // }
+        game.ForceFinish().get((err, logs) => {
+          if (!logs.length) return;
+          const { gameId, caller } = logs[0].args
+          console.log("the game", gameId, " was force-finished by", caller)
+        });
+        game.Tie().get((err, logs) => {
+          if (!logs.length) return;
+          const { gameId, reward } = logs[0].args
+          console.log(
+            "the game", gameId, 
+            "is tied, the winner will receieve", web3.fromWei(reward, 'ether').toNumber()
+          );
+        });
+        game.NextRound().get((err, logs) => {
+          if (!logs.length) return;
+          const { gameId, round, reward } = logs[0].args
+          console.log(
+            'game', gameId,
+            'goes for round', round.toNumber(),
+            ', the winner will receive', web3.fromWei(reward, 'ether').toNumber());
+        });
+        game.Winner().get((err, logs) => {
+          if (!logs.length) return;
+          const {gameId, winner, reward} = logs[0].args
+          console.log(
+            "the winner is", winner, 
+            'and received', web3.fromWei(reward, 'ether').toNumber()
+          );
+        });
       } else {
         console.error(error);
       }
@@ -108,24 +82,18 @@ class App extends Component {
   }
 
   getGameId = (player1, player2) => {
-    // console.log(player1, player2);
-    // console.log(player1.toString('hex'), player2.toString('hex'));
     player1 = setLengthLeft(player1, 20)
     player2 = setLengthLeft(player2, 20)
-    // console.log(player1, player2);
-    // console.log(player1.toString('hex'), player2.toString('hex'));
-    // const gameHex = abi.soliditySHA3(['address', 'address'], [player1.toString('hex'), player2.toString('hex')]);
     const gameHex = abi.soliditySHA3(['address', 'address'], [player1, player2]);
     console.log('hex', gameHex);
     const gameId = '0x' + new BN(gameHex).toString('hex');
-    // console.log(gameId);
     return gameId;
   }
 
   getSecretHand = (hand) => {
     const seedBN = new BN(randomBytes(32));
     const seedHex = '0x' + seedBN.toString('hex');
-    console.log(hand, seedHex)
+    console.log('0x' + hand.toString(), seedHex)
     const secretHand = abi.soliditySHA3(['uint256', 'uint256'], [hand, seedHex]);
     return [secretHand, seedBN];
   }
@@ -136,7 +104,6 @@ class App extends Component {
     try {
       const [secretHand, seed] = this.getSecretHand(this.state.selectedHand)
       const secretHandHex = '0x' + secretHand.toString('hex')
-      // console.log('player, secret:', this.state.player2, secretHandHex);
       await pCreateGame(
         this.state.player2,
         secretHandHex,
@@ -146,10 +113,6 @@ class App extends Component {
           value: web3.toWei(this.state.fee, 'ether')
         }
       );
-      // const gameId = this.getGameId(this.state.player1, this.state.player2);
-      // console.log('gameId:' + gameId.toString('hex'));
-      // console.log('seed: 0x' + seed.toString('hex'))
-      // localStorage.setItem(gameId, seed.toString('hex'));
       localStorage.setItem('seed', seed.toString('hex'))
     } catch (e) {
       console.log('an error has occored', e);
@@ -180,7 +143,8 @@ class App extends Component {
       const pFinishGame = promisify(game.finishGame.sendTransaction);
 
       const hand = this.state.selectedHand;
-      const seed = localStorage.getItem(this.state.gameId);
+      const seed = '0x' + localStorage.getItem(this.state.gameId);
+      // console.log(this.state.gameId, hand, seed);
       await pFinishGame(
         this.state.gameId,
         hand,
@@ -201,15 +165,18 @@ class App extends Component {
 
       const hand = this.state.selectedHand;
       const [secretHand, seed] = this.getSecretHand(hand);
+      const secretHandHex = '0x' + secretHand.toString('hex');
+      console.log(this.state.gameId, hand, secretHandHex)
       await pContinueGame(
         this.state.gameId,
-        secretHand,
+        secretHandHex,
         {
           gas: 300000,
           from: this.state.player1,
+          value: web3.toWei(this.state.fee, 'ether')
         }
       );
-      localStorage.setItem(this.state.gameId, seed.toString('hex'));
+      localStorage.setItem('seed', seed);
     } catch (e) {
       console.log('an error has occored', e);
     }
@@ -262,23 +229,8 @@ class App extends Component {
           from: this.state.player1,
         }
       );
+      console.log(r[0], r[1], r[8].toString());
       console.log(r);
-    } catch (e) {
-      console.log('an error has occored', e);
-    }
-  }
-
-
-  joinGame = async () => {
-    try {
-      const data = await this.getGame();
-      if (data[8]) {
-        console.log("this game already ended");
-      } else {
-        if (data[5].toNumber() === 0) {
-          console.log("this game do not exist");
-        }
-      }
     } catch (e) {
       console.log('an error has occored', e);
     }
@@ -317,7 +269,6 @@ class App extends Component {
         </div>
         <div>
           gameId:<input id="gameId" type="text" onChange={ event => this.updateGameId(event) } />
-          <button onClick={() => this.joinGame()}>Join Game</button>
           <button onClick={() => this.sendHand()}>Send Hand</button>
         </div>
         <section>
@@ -327,9 +278,9 @@ class App extends Component {
           <button onClick={() => this.selectHand(3)} id="scissors">Tijera</button>
         </section>
         <button onClick={() => this.finishGame()}>Finish game</button>
-        <button onClick={() => this.deleteGame()}>Delete game</button>
+        <button onClick={() => this.continueGame()}>Continue game</button>
         <button onClick={() => this.getGame()}>Get game</button>
-        <button onClick={() => this.deleteAll()}>DELETE ALL</button>
+        <button onClick={() => this.deleteGame()}>Delete game</button>
       </div>
     )
   };
