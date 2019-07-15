@@ -69,6 +69,7 @@ contract GameContract {
         games[gameId].winner = 0;
         games[gameId].status = 1;
         games[gameId].round = 0;
+
         emit GameCreated(gameId, player1, _player2, fee);
 
         return gameId;
@@ -108,7 +109,7 @@ contract GameContract {
         return rules[hand1][hand2];
     }
 
-    function verifyHand(bytes32 secretHand, uint hand, uint256 seed) public pure returns (bool) {
+    function verifyHand(bytes32 secretHand, uint256 hand, uint256 seed) public pure returns (bool) {
         bytes32 verification = keccak256(abi.encodePacked(hand, seed));
         return secretHand == verification;
     }
@@ -260,5 +261,4 @@ contract GameContract {
     function deleteGame(bytes32 gameId) public {
         delete games[gameId];
     }
-
 }
