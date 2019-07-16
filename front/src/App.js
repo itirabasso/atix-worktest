@@ -32,15 +32,14 @@ class App extends Component {
       toBlock: "latest",
       address: game.address,
     };
-    // 0xc40eb6b4839055c77d68697985cfa7e7064f73c5661a0552183a1396260379e5
+
     const watchForEvents = function(error, response) {
       if (!error && response) {
         game.GameCreated().get((err, logs) => {
           if (!logs.length) return;
-          const {gameId, player1, player2, fee} = logs[0].args
+          const { gameId } = logs[0].args
           const seed = localStorage.getItem('seed');
           localStorage.setItem(gameId, seed);
-          // console.log("game, seed:", gameId, seed)
           this.updateGameId(gameId);
         });
         game.ForceFinish().get((err, logs) => {
@@ -65,7 +64,6 @@ class App extends Component {
             ', the winner will receive', web3.fromWei(reward, 'ether').toNumber()
           );
           const seed = localStorage.getItem('seed');
-          console.log(gameId, seed);
           localStorage.setItem(gameId, seed);
         });
         game.Winner().get((err, logs) => {
