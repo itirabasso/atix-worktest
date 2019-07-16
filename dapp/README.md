@@ -26,6 +26,15 @@ npx truffle test
 npx truffle migrate
 ```
 
+# Commit-reveal scheme
+
+Al crear la partida se envia un secreto que es igual a ```keccak256(abi.encodePacked(hand, seed))```, siendo hand la mano elegida y seed un valor de 32 bytes random.
+Luego el player2 debe jugar su mano, esta si se envia en texto plano.
+Luego player1 debe finalizar la partida enviando la mano y la seed que se utilizó para generar el secreto enviado previamente. 
+Si la mano y la seed son las mismas son correctamente verificadas la partida continua su desarrollo, ya sea con un empate o con un ganador.
+De haber empate, player1 puede continuar enviando otro secreto (generado de la misma forma pero con otro valor random)
+Las partidas tienen tiempo de expiration, por lo que si player1 tardase mucho en decidir si quiere finalizar/continuar la partida o player2 en jugar su mano, cualquiera de los dos puede llamar a ForceFinish y forzar la terminacion de la partida (repartiendo el monto apostado entre ambos jugadores).
+
 ## ERC20 implementation
 
 Antes de poder crear una partida llamaría a [IERC20::approve](https://github.com/OpenZeppelin/openzeppelin-solidity/blob/master/contracts/token/ERC20/IERC20.sol#L50) con un valor suficientemente alto para no necesitar incrementar el allowance constantemente.
@@ -37,23 +46,5 @@ En lugar de enviar ether en la transacción que envia la mano elegida por el jug
 ### finishGame
 
 De forma similar a sendHand, en lugar de enviar ether al ganador se le transferirian los ERC20 al ganador.
-
-
-## Commit-reveal protocol
-
-Una forma de evitar que alguna de las partes pueda saber la elección de la otra de ante mano es utilizar un commit-reveal protocol.
-
-### Commit phase
-
-Ambos jugadores, en lugar de enviar su elección en texto plano, envian un hash de su elección y algún valor random, siendo este último es necesario para garantizar un hash único.
-
-### Reveal phase
-
-Una vez que ambos jugado, envian su elección junto con el mismo valor random previamente utilizadop y se genera el calcula el mismo hash.
-De ser iguales, ambos jugadores fueron _honestos_ y la partida puede continuar ya sea con un resultado final (ganador/perdedor) o en una segunda ronda en caso de haber un empate.
-En caso de que algun hash no sea el mismo al envia previamente enviado significa que algún jugador está intentando modificar su elección y podría ser descalificado.
-
-
-
 
 
