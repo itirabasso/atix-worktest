@@ -10,6 +10,14 @@ contract GameContract {
 
         uint expiration;
 
+
+        /**
+            0 = not created game
+            1 = game created, waiting for player2 hand
+            2 = player 2 have played, waiting for results
+            3 = game is tied
+            4 = game has a winner
+        */
         uint status;
 
         // Hand player1Hand;
