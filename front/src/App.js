@@ -89,7 +89,6 @@ class App extends Component {
     player1 = setLengthLeft(player1, 20)
     player2 = setLengthLeft(player2, 20)
     const gameHex = abi.soliditySHA3(['address', 'address'], [player1, player2]);
-    // console.log('hex', gameHex);
     const gameId = '0x' + new BN(gameHex).toString('hex');
     return gameId;
   }
@@ -97,13 +96,14 @@ class App extends Component {
   getSecretHand = (hand) => {
     const seedBN = new BN(randomBytes(32));
     const seedHex = '0x' + seedBN.toString('hex');
-    // console.log('0x' + hand.toString(), seedHex)
     const secretHand = abi.soliditySHA3(['uint256', 'uint256'], [hand, seedHex]);
-    // console.log(hand, seedHex, secretHand);
     return [secretHand, seedBN];
   }
 
   createGame = async () => {
+    if (!this.state.selectedHand) {
+      return console.error("you must choose a hand");
+    }
     console.log("Creating new game between", this.state.player1, "and", this.state.player2)
     const pCreateGame = promisify(game.createGame.sendTransaction);
     try {
@@ -125,13 +125,14 @@ class App extends Component {
   }
 
   sendHand = async () => {
-    const hand = this.state.selectedHand
+    if (!this.state.selectedHand) {
+      return console.error("you must choose a hand");
+    }
     try {
       const pSendHand = promisify(game.sendHand.sendTransaction);
-      // console.log(this.state.gameId, hand)
       await pSendHand(
         this.state.gameId,
-        hand,
+        this.state.selectedHand,
         {
           gas: 300000,
           from: this.state.player1,
@@ -147,9 +148,8 @@ class App extends Component {
     try {
       const pFinishGame = promisify(game.finishGame.sendTransaction);
 
-      const hand = '0x' + this.state.selectedHand.toString();
+      const hand = this.state.selectedHand;
       const seed = '0x' + localStorage.getItem(this.state.gameId);
-      console.log(this.state.gameId, hand, seed);
       await pFinishGame(
         this.state.gameId,
         hand,
@@ -165,13 +165,14 @@ class App extends Component {
   }
   
   continueGame = async () => {
+    if (!this.state.selectedHand) {
+      return console.error("you must choose a hand");
+    }
     try {
       const pContinueGame = promisify(game.continueGame.sendTransaction);
 
-      const hand = this.state.selectedHand;
-      const [secretHand, seed] = this.getSecretHand(hand);
+      const [secretHand, seed] = this.getSecretHand(this.state.selectedHand);
       const secretHandHex = '0x' + secretHand.toString('hex');
-      // console.log(this.state.gameId, hand, secretHandHex)
       await pContinueGame(
         this.state.gameId,
         secretHandHex,
@@ -181,7 +182,7 @@ class App extends Component {
           value: web3.toWei(this.state.fee, 'ether')
         }
       );
-      localStorage.setItem('seed', seed);
+      localStorage.setItem('seed', seed.toString('hex'));
     } catch (e) {
       console.log('an error has occored', e);
     }
@@ -189,7 +190,7 @@ class App extends Component {
 
   forceFinishGame = async () => {
     try {
-      const pForceFinish = promisify(game.forceFinish.sendTransaction);
+      const pForceFinish = promisify(game.forceFinishGame.sendTransaction);
       await pForceFinish(
         this.state.gameId,
         {
@@ -211,15 +212,6 @@ class App extends Component {
     }
   }
 
-  deleteAll = async () => {
-    try {
-      const pDeleteAll = promisify(game.deleteAll.sendTransaction);
-      pDeleteAll({gas: 300000, from: this.state.player1});
-    } catch (e) {
-      console.log('an error has occored', e);
-    }
-  }
-
   getGame = async () => {
     if (!this.state.gameId) {
       return;
@@ -227,15 +219,25 @@ class App extends Component {
     try {
       const pGetGame = promisify(game.getGame.call);
 
-      const r = await pGetGame(
+      const g = await pGetGame(
         this.state.gameId,
         {
           gas: 300000,
           from: this.state.player1,
         }
       );
-      console.log(r[0], r[1], r[8].toString());
-      console.log(r);
+      console.log(
+        'gameId', this.state.gameId,
+        'player1', g[0],
+        'player2', g[1],
+        'expiration', g[2].toNumber(),
+        'player1SecretHand', g[3],
+        'player2Hand', g[4].toNumber(),
+        'fee', g[5].toNumber(),
+        'reward', g[6].toNumber(),
+        'winner', g[7].toNumber(),
+        'status', g[8].toNumber() 
+      );
     } catch (e) {
       console.log('an error has occored', e);
     }
@@ -261,7 +263,7 @@ class App extends Component {
 
 
   selectHand = async (hand) => {
-    console.log('new hand:', hand)
+    console.log('hand:', hand)
     this.setState({selectedHand: hand})
   }
 
@@ -285,6 +287,7 @@ class App extends Component {
         <button onClick={() => this.finishGame()}>Finish game</button>
         <button onClick={() => this.continueGame()}>Continue game</button>
         <button onClick={() => this.getGame()}>Get game</button>
+        <button onClick={() => this.forceFinishGame()}>Force finish</button>
         <button onClick={() => this.deleteGame()}>Delete game</button>
       </div>
     )
