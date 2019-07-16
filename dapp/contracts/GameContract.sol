@@ -10,7 +10,6 @@ contract GameContract {
 
         uint expiration;
 
-
         /**
             0 = not created game
             1 = game created, waiting for player2 hand
@@ -44,11 +43,7 @@ contract GameContract {
     event Tie(bytes32 gameId, uint reward);
 
     constructor() public {
-        setRules();
-    }
-
-    function validHand(uint hand) public pure returns (bool) {
-        return hand > 0 && hand <= 3;
+        _setRules();
     }
 
     /**
@@ -125,6 +120,8 @@ contract GameContract {
     /**
     * @dev Finish a game.
     * @param _gameId - bytes32 of the game's id
+    * @param _hand - uint256 of the previously selected hand
+    * @param _seed - uint256 of the secret's seed
     */
     function finishGame(bytes32 _gameId, uint _hand, uint256 _seed) public payable returns (bool) {
         Game storage game = games[_gameId];
@@ -186,7 +183,7 @@ contract GameContract {
     */
     function forceFinishGame(bytes32 _gameId) public returns (bool) {
         Game storage game = games[_gameId];
-        require(isGameExpired(game.expiration), "game is not expired yet");
+        require(_isGameExpired(game.expiration), "game is not expired yet");
         require(game.player1 == msg.sender || game.player2 == msg.sender, "only players can force finish");
 
         // TODO: no contempla rondas
@@ -201,25 +198,38 @@ contract GameContract {
         return true;
     }
 
-    function isGameExpired(uint expiration) private view returns (bool) {
+    /**
+    * @dev Checks if the given hand is valid.
+    * @param hand - uint256 of the hand
+    */
+    function isValidHand(uint hand) public pure returns (bool) {
+        return hand > 0 && hand <= 3;
+    }
+
+
+    /**
+    * @dev Checks if the given expiration has already passed.
+    * @param expiration - uint256 of the expiration time
+    */
+    function _isGameExpired(uint expiration) private view returns (bool) {
         return expiration < now;
     }
 
-    function _payFee(bytes32 _gameId) private returns (uint) {
-        Game memory game = games[_gameId];
+    /**
+    * @dev Check if the tx's value can pay the game's fee.
+    * @param gameId - bytes32 of the game's id
+    */
+    function _payFee(bytes32 gameId) private returns (uint) {
+        Game memory game = games[gameId];
         require(msg.value >= game.fee, "you need to pay game's fee");
         // TODO : secure math
         return game.reward + msg.value;
     }
 
-    function isValidHand(uint _hand) public pure returns (bool) {
-        return _hand >= 1 && _hand <= 3;
-    }
-
     /**
     * @dev Setup the rule's matrix
     */
-    function setRules() private {
+    function _setRules() private {
         uint rock = uint(Hand.Rock);
         uint paper = uint(Hand.Paper);
         uint scissors = uint(Hand.Scissors);
