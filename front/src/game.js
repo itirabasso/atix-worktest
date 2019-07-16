@@ -2,7 +2,7 @@ import web3 from "./web3";
 
 // ropsten network
 // const address = '0x37ab2a8f0c44099eac4baa5317e8845de4dfd6fc';
-const address = '0x219c6e960acC3C28D5979a03041aC1d8e10BdE69';
+const address = '0xE3Dd4cf568d38402d8dd6722a2771Aacd24FBbfD';
 
 const abi = [
   {
@@ -411,15 +411,6 @@ const abi = [
       }
     ],
     "name": "deleteGame",
-    "outputs": [],
-    "payable": false,
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "constant": false,
-    "inputs": [],
-    "name": "deleteAll",
     "outputs": [],
     "payable": false,
     "stateMutability": "nonpayable",
